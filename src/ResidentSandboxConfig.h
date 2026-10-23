@@ -89,6 +89,13 @@ struct SandboxConfig {
   // network sends wait. Set true to restore the old gated behavior.
   bool gateTickOnConnection = false;
 
+  // How often Lua's on_tick (and a winning overlay's onDraw) runs, in ms.
+  // 100 (10 FPS) unless the board sets it: a board whose display and CPU can
+  // keep up may tick faster (33 for ~30 FPS). Apps get the real gap as dt_ms;
+  // one that moves a fixed step per tick runs faster on such a board. 0 means
+  // the default.
+  uint16_t tickIntervalMs = 100;
+
   // Sandbox hardening (0.8): by default the app environment does NOT get
   // os / io / package / require / load / dofile / loadstring / loadfile /
   // debug. Set true to open the full standard library (trusted builds

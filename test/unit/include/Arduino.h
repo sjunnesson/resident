@@ -51,7 +51,7 @@ static constexpr int INPUT       = 0x01;
 static constexpr int INPUT_PULLUP = 0x05;
 
 // Stub timing — a settable fake clock. Defaults to 0 (the old fixed-zero
-// behavior); tests that need elapsed time (e.g. Sandbox's TICK_INTERVAL
+// behavior); tests that need elapsed time (e.g. Sandbox's tick interval
 // gate) advance it directly: `testMillis() += 200;`. Reset it in setUp().
 inline unsigned long& testMillis() { static unsigned long now = 0; return now; }
 inline unsigned long millis() { return testMillis(); }

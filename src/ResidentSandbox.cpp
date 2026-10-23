@@ -2046,7 +2046,7 @@ void Sandbox::loop() {
 
   unsigned long now = millis();
   unsigned long elapsed = now - _lastTickTime;
-  if (elapsed >= TICK_INTERVAL) {
+  if (elapsed >= tickInterval()) {
 #if RESIDENT_TICK_DIAGS
     uint32_t diagT0 = micros();
 #endif
@@ -2069,9 +2069,9 @@ void Sandbox::loop() {
 // (what the app sees as dt_ms); `fwUs`/`appUs` are the framework_tick and
 // on_tick halves of the dispatch itself.
 //
-// Two failures are distinguished. A dispatch costing more than TICK_INTERVAL
+// Two failures are distinguished. A dispatch costing more than tickInterval()
 // is an *overrun*: the Lua work alone cannot fit the budget. A period longer
-// than DIAG_LATE_PERIOD_MS with a dispatch that fits is a *late* tick: the
+// than 1.5 tick intervals with a dispatch that fits is a *late* tick: the
 // schedule slipped somewhere else in loop() (drivers, transports, overlays).
 void Sandbox::noteTickTiming(unsigned long periodMs, uint32_t fwUs, uint32_t appUs)
 {
@@ -2086,9 +2086,9 @@ void Sandbox::noteTickTiming(unsigned long periodMs, uint32_t fwUs, uint32_t app
   if (fwUs > _diagFwMaxUs) _diagFwMaxUs = fwUs;
   if (periodMs > _diagPeriodMaxMs) _diagPeriodMaxMs = periodMs;
 
-  const bool overrun = dispatchUs >= TICK_INTERVAL * 1000UL;
+  const bool overrun = dispatchUs >= tickInterval() * 1000UL;
   if (overrun) _diagOverruns++;
-  else if (periodMs >= DIAG_LATE_PERIOD_MS) _diagLate++;
+  else if (periodMs >= tickInterval() * 3 / 2) _diagLate++;
 
   if (overrun && now - _diagLastOverrunLog >= DIAG_OVERRUN_LOG_MS) {
     _diagLastOverrunLog = now;
@@ -2097,7 +2097,7 @@ void Sandbox::noteTickTiming(unsigned long periodMs, uint32_t fwUs, uint32_t app
                   dispatchUs / 1000UL, (dispatchUs % 1000UL) / 10UL,
                   appUs / 1000UL, (appUs % 1000UL) / 10UL,
                   fwUs / 1000UL, (fwUs % 1000UL) / 10UL,
-                  TICK_INTERVAL, periodMs);
+                  tickInterval(), periodMs);
   }
 
   if (now - _diagWindowStart < DIAG_WINDOW_MS) return;
@@ -2713,7 +2713,7 @@ void Sandbox::updateOverlays()
   // the first frame; event-driven repaints outside onDraw remain fine.
   unsigned long now = millis();
   unsigned long elapsed = now - _lastOverlayDrawTime;
-  if (elapsed >= TICK_INTERVAL) {
+  if (elapsed >= tickInterval()) {
     _lastOverlayDrawTime = now;
     for (uint8_t i = 0; i < _overlayCount; i++) {
       if (_overlays[i].winning) _overlays[i].o->onDraw(elapsed);

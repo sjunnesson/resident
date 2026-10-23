@@ -286,7 +286,7 @@ void test_draw_paced_on_tick_cadence(void) {
   sandbox->addOverlay(&ov, disp, 100);
   sandbox->requestOverlay(&ov, true);
 
-  // Loop steps of 20ms: with TICK_INTERVAL=100 only every 5th loop draws.
+  // Loop steps of 20ms: with the default 100ms tick only every 5th loop draws.
   int drawsBefore = ov.draws;
   for (int i = 0; i < 10; i++) { testMillis() += 20; sandbox->loop(); }
   int drawn = ov.draws - drawsBefore;

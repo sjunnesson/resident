@@ -13,11 +13,13 @@ Resident::Sandbox* sandbox = nullptr;
 std::vector<std::string>* frames = nullptr;
 std::vector<std::string>* telemetry = nullptr;
 
-void build(bool networked = false, bool gateTick = false, bool openLibs = false) {
+void build(bool networked = false, bool gateTick = false, bool openLibs = false,
+           uint16_t tickMs = 100) {
   Resident::SandboxConfig cfg;
   cfg.deviceType = "native-test";
   cfg.persistApps = false;
   cfg.gateTickOnConnection = gateTick;
+  cfg.tickIntervalMs = tickMs;
   cfg.openUnsafeLibs = openLibs;
   if (networked) {
     Courier::Config net;
@@ -111,6 +113,38 @@ void test_gate_tick_on_connection_restores_old_behavior(void) {
   loadApp("ticks = 0\nfunction on_tick(ctx, dt) ticks = ticks + 1 end\n");
   pump();
   TEST_ASSERT_EQUAL_INT(0, sandbox->luaGlobalIntForTest("ticks"));
+}
+
+// One second of loop() in 10 ms steps; the app counts its ticks and keeps
+// the last dt_ms.
+void runOneSecond() {
+  for (int i = 0; i < 100; i++) { testMillis() += 10; sandbox->loop(); }
+}
+const char* kTickCounter =
+    "ticks = 0\nlast_dt = 0\n"
+    "function on_tick(ctx, dt) ticks = ticks + 1 last_dt = dt end\n";
+
+void test_tick_interval_defaults_to_100ms(void) {
+  build();
+  loadApp(kTickCounter);
+  runOneSecond();
+  TEST_ASSERT_INT_WITHIN(1, 10, sandbox->luaGlobalIntForTest("ticks"));
+  TEST_ASSERT_EQUAL_INT(100, sandbox->luaGlobalIntForTest("last_dt"));
+}
+
+void test_tick_interval_set_by_the_board(void) {
+  build(false, false, false, /*tickMs=*/30);
+  loadApp(kTickCounter);
+  runOneSecond();
+  TEST_ASSERT_INT_WITHIN(1, 33, sandbox->luaGlobalIntForTest("ticks"));
+  TEST_ASSERT_EQUAL_INT(30, sandbox->luaGlobalIntForTest("last_dt"));
+}
+
+void test_tick_interval_zero_means_default(void) {
+  build(false, false, false, /*tickMs=*/0);
+  loadApp(kTickCounter);
+  runOneSecond();
+  TEST_ASSERT_INT_WITHIN(1, 10, sandbox->luaGlobalIntForTest("ticks"));
 }
 
 void test_unsafe_stdlib_closed_by_default(void) {
@@ -238,6 +272,9 @@ int main(int, char**) {
   UNITY_BEGIN();
   RUN_TEST(test_disconnected_device_still_ticks_and_dispatches);
   RUN_TEST(test_gate_tick_on_connection_restores_old_behavior);
+  RUN_TEST(test_tick_interval_defaults_to_100ms);
+  RUN_TEST(test_tick_interval_set_by_the_board);
+  RUN_TEST(test_tick_interval_zero_means_default);
   RUN_TEST(test_unsafe_stdlib_closed_by_default);
   RUN_TEST(test_open_unsafe_libs_opts_back_in);
   RUN_TEST(test_store_remaining_and_store_full_once_per_key);

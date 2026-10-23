@@ -705,16 +705,18 @@ private:
 
     // Frame timing
     unsigned long _lastTickTime = 0;
-    static constexpr unsigned long TICK_INTERVAL = 100; // 10 FPS
+    // SandboxConfig::tickIntervalMs; 100 (10 FPS) when unset.
+    unsigned long tickInterval() const {
+      return _config.tickIntervalMs ? _config.tickIntervalMs : 100;
+    }
 
 #if RESIDENT_TICK_DIAGS
     // Tick-timing diagnostics (-DRESIDENT_TICK_DIAGS=1): measures how long one
-    // dispatch (framework_tick + on_tick) costs against the TICK_INTERVAL
+    // dispatch (framework_tick + on_tick) costs against the tickInterval()
     // budget, and how far the realised tick period drifts from it. Reports on
     // Serial: a rate-limited line per overrun plus a periodic window summary.
     static constexpr unsigned long DIAG_WINDOW_MS = 5000;
     static constexpr unsigned long DIAG_OVERRUN_LOG_MS = 1000;
-    static constexpr unsigned long DIAG_LATE_PERIOD_MS = TICK_INTERVAL * 3 / 2;
     void noteTickTiming(unsigned long periodMs, uint32_t fwUs, uint32_t appUs);
     // The hooks benchmarkExecutionGuard() times.
     static void benchCountHook(struct lua_State* L, struct lua_Debug* ar);

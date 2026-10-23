@@ -1,5 +1,13 @@
 # Changelog
 
+## Unreleased
+
+### New features
+
+- **`SandboxConfig::tickIntervalMs` sets how often `on_tick` runs.** It was the constant `Sandbox::TICK_INTERVAL`, 100 ms (10 FPS), which held every app on a board to 10 frames a second unless it brought its own timer (LVGL's). A board whose display and CPU keep up can now tick faster: measured on an ESP32-C6 with a 172×320 ST7789, an app that redraws a small region takes 4 ms a tick, so 10 FPS left it idle 96% of the time. The default stays 100, so nothing changes unless a board sets it. Apps already get the real gap as `dt_ms`; one that moves a fixed step per tick runs faster on a board that ticks faster. A winning overlay's `onDraw` and the tick diagnostics follow the same interval. `Sandbox::TICK_INTERVAL` is gone; read `SandboxConfig::tickIntervalMs` instead.
+
+---
+
 ## v0.12.0
 
 ### Breaking changes
