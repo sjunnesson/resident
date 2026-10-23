@@ -57,7 +57,7 @@ constexpr const char* TEST_APP =
     "function on_tick(ctx, dt) probe.tick() end\n"
     "function on_event(ctx, e) probe.event(e.name) end\n";
 
-// Advance the fake clock past TICK_INTERVAL (100ms) and run one loop()
+// Advance the fake clock past the tick interval (100ms by default) and run one loop()
 // iteration; each iteration fires at most one on_tick and dispatches at
 // most one queued event.
 void runLoop(int times = 1) {
