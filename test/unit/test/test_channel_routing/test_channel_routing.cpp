@@ -27,7 +27,7 @@ void loadCountingApp() {
   sandbox->injectMessage("test", "app", doc);
 }
 
-// Deliver queued events: advance past TICK_INTERVAL and tick.
+// Deliver queued events: advance past the tick interval and tick.
 void pump() { testMillis() += 200; sandbox->loop(); }
 
 // Minimal fake SystemDisplay — no reusable one captures displayText in the
