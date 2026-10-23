@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### Fixes
+
+- **A loop pass delivers every queued event, not one.** When ticks run back to back (an app whose tick costs more than the interval) a pass is a whole tick long, and one event a pass fell behind a steady stream until the 8-slot ring dropped the oldest. Measured on an ESP32-C6 with an app whose tick takes 65 ms, 33 ms interval, 180 relay events at ~24/s: 70% arrived before, against 97% with a 100 ms interval. A pass now delivers the events queued when it reaches them (not ones that arrive meanwhile, so a flood can't hold the loop), each under its own execution deadline; an event that unloads or suspends the app stops the rest. A burst bigger than the queues (Courier's 8 and the ring's 7) arriving within one tick still loses the excess, at any interval.
+
 ### New features
 
 - **`SandboxConfig::tickIntervalMs` sets how often `on_tick` runs.** It was the constant `Sandbox::TICK_INTERVAL`, 100 ms (10 FPS), which held every app on a board to 10 frames a second unless it brought its own timer (LVGL's). A board whose display and CPU keep up can now tick faster: measured on an ESP32-C6 with a 172×320 ST7789, an app that redraws a small region takes 4 ms a tick, so 10 FPS left it idle 96% of the time. The default stays 100, so nothing changes unless a board sets it. Apps already get the real gap as `dt_ms`; one that moves a fixed step per tick runs faster on a board that ticks faster. A winning overlay's `onDraw` and the tick diagnostics follow the same interval. `Sandbox::TICK_INTERVAL` is gone; read `SandboxConfig::tickIntervalMs` instead.
