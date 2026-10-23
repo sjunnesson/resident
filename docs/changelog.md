@@ -4,7 +4,7 @@
 
 ### Fixes
 
-- **A loop pass delivers every queued event, not one.** When ticks run back to back (an app whose tick costs more than the interval) a pass is a whole tick long, and one event a pass fell behind a steady stream until the 8-slot ring dropped the oldest. Measured on an ESP32-C6 with an app whose tick takes 65 ms, 33 ms interval, 180 relay events at ~24/s: 70% arrived before, against 97% with a 100 ms interval. A pass now delivers the events queued when it reaches them (not ones that arrive meanwhile, so a flood can't hold the loop), each under its own execution deadline; an event that unloads or suspends the app stops the rest. A burst bigger than the queues (Courier's 8 and the ring's 7) arriving within one tick still loses the excess, at any interval.
+- **A loop pass delivers every queued event, not one.** When ticks run back to back (an app whose tick costs more than the interval) a pass is a whole tick long, and one event a pass fell behind a steady stream until the 8-slot ring dropped the oldest. Measured on an ESP32-C6 with an app whose tick takes 65 ms, 33 ms interval, 180 relay events at ~24/s: 70% arrived (125-129), against 94-99% with a 100 ms interval; with this fix 94-99% (169-178) at 33 ms. A pass now delivers the events queued when it reaches them (not ones that arrive meanwhile, so a flood can't hold the loop), each under its own execution deadline; an event that unloads or suspends the app stops the rest. A burst bigger than the queues (Courier's 8 and the ring's 7) arriving within one tick still loses the excess, at any interval: of 40 events sent at once, 10-15 arrived at 100 ms and 14-19 with this fix.
 
 ### New features
 
