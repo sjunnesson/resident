@@ -2061,7 +2061,14 @@ void Sandbox::loop() {
     _lastTickTime = now;
   }
 
-  processNextEvent();
+  // Every event queued by now, not one: when ticks run back to back (a slow
+  // app, or a short tickIntervalMs) a pass is a whole tick long, and one event
+  // a pass falls behind a steady stream (a touch drag) until the ring drops
+  // events. Only those already queued, so a flood can't hold the loop; each
+  // dispatch has its own execution deadline. An event that unloads or
+  // suspends the app stops the rest.
+  int pending = (_eventHead - _eventTail + SANDBOX_MAX_EVENTS) % SANDBOX_MAX_EVENTS;
+  while (pending-- > 0 && _runState == RunState::Running) processNextEvent();
 }
 
 #if RESIDENT_TICK_DIAGS

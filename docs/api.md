@@ -125,7 +125,7 @@ sandbox.loop();    // call from Arduino loop()
    2. **Driver heartbeat:** the de-duplicated lifecycle list is walked once and `update()` is called on each object. Role peripherals (`systemDisplay`, `systemLED`, `systemButton`) update every loop regardless of app state or connectivity. All other extensions update only while an app is loaded (running or suspended). Connectivity does not gate either cadence.
    3. If a persisted app is waiting to load, the boot countdown runs (and the function returns early).
    4. The Lua `on_tick(ctx, dt_ms)` callback fires every `SandboxConfig::tickIntervalMs` (100 ms, 10 FPS, by default) while an app is Running. Connectivity does not gate it unless `SandboxConfig::gateTickOnConnection` is set.
-   5. Up to one pending event is delivered to `on_event(ctx, event)`.
+   5. The events queued so far are delivered to `on_event(ctx, event)`, oldest first (not ones that arrive meanwhile).
 
 ### Setup-phase callbacks (register before `setup()`)
 

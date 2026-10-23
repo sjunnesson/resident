@@ -147,6 +147,31 @@ void test_tick_interval_zero_means_default(void) {
   TEST_ASSERT_INT_WITHIN(1, 10, sandbox->luaGlobalIntForTest("ticks"));
 }
 
+// A pass delivers every event queued so far, not one: with ticks back to
+// back a pass is a tick long, and one a pass fell behind a steady stream.
+void test_one_pass_delivers_every_queued_event(void) {
+  build();
+  loadApp("events = 0\n"
+          "function on_tick(ctx, dt) end\n"
+          "function on_event(ctx, e) events = events + 1 end\n");
+  for (int i = 0; i < 5; i++) injectAppEvent("ping");
+  testMillis() += 10;  // inside the tick interval: no tick, just the events
+  sandbox->loop();
+  TEST_ASSERT_EQUAL_INT(5, sandbox->luaGlobalIntForTest("events"));
+}
+
+// An event whose handler fails doesn't stop the others in the same pass.
+void test_a_failing_handler_does_not_stop_the_rest(void) {
+  build();
+  loadApp("events = 0\n"
+          "function on_tick(ctx, dt) end\n"
+          "function on_event(ctx, e) events = events + 1 if events == 2 then error('boom') end end\n");
+  for (int i = 0; i < 4; i++) injectAppEvent("ping");
+  testMillis() += 10;
+  sandbox->loop();
+  TEST_ASSERT_EQUAL_INT(4, sandbox->luaGlobalIntForTest("events"));
+}
+
 void test_unsafe_stdlib_closed_by_default(void) {
   build();
   loadApp(
@@ -275,6 +300,8 @@ int main(int, char**) {
   RUN_TEST(test_tick_interval_defaults_to_100ms);
   RUN_TEST(test_tick_interval_set_by_the_board);
   RUN_TEST(test_tick_interval_zero_means_default);
+  RUN_TEST(test_one_pass_delivers_every_queued_event);
+  RUN_TEST(test_a_failing_handler_does_not_stop_the_rest);
   RUN_TEST(test_unsafe_stdlib_closed_by_default);
   RUN_TEST(test_open_unsafe_libs_opts_back_in);
   RUN_TEST(test_store_remaining_and_store_full_once_per_key);
