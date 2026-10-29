@@ -8,6 +8,7 @@
 
 ### New features
 
+- **`g:pushImage(x, y, w, h, data)`** in the `lgfx` module: a block of pixels from a Lua string of `w * h * 2` bytes, RGB565 big-endian, row by row (anything else raises). An app that keeps its own picture sends what changed as one call instead of a `fillRect` a run. The LovyanGFX adapter hands rows to LovyanGFX's `pushImage`; any other target falls back to `drawPixel`, and a target with a framebuffer of its own should override `LgfxTarget::pushImage` to copy rows straight in.
 - **`SandboxConfig::tickIntervalMs` sets how often `on_tick` runs.** It was the constant `Sandbox::TICK_INTERVAL`, 100 ms (10 FPS), which held every app on a board to 10 frames a second unless it brought its own timer (LVGL's). A board whose display and CPU keep up can now tick faster: measured on an ESP32-C6 with a 172×320 ST7789, an app that redraws a small region takes 4 ms a tick, so 10 FPS left it idle 96% of the time. The default stays 100, so nothing changes unless a board sets it. Apps already get the real gap as `dt_ms`; one that moves a fixed step per tick runs faster on a board that ticks faster. A winning overlay's `onDraw` and the tick diagnostics follow the same interval. `Sandbox::TICK_INTERVAL` is gone; read `SandboxConfig::tickIntervalMs` instead.
 
 ---

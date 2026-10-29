@@ -53,6 +53,15 @@ struct FakeGfx {
   void drawRect(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t c) {
     log("drawRect(%d,%d,%d,%d,%06x)", (int)x, (int)y, (int)w, (int)h, (unsigned)c);
   }
+  void pushImage(int32_t x, int32_t y, int32_t w, int32_t h, const uint16_t* data) {
+    for (int32_t r = 0; r < h; r++)
+      for (int32_t c = 0; c < w; c++) {
+        uint16_t v = data[r * w + c];
+        uint32_t r5 = (v >> 11) & 0x1F, g6 = (v >> 5) & 0x3F, b5 = v & 0x1F;
+        set(x + c, y + r, ((r5 << 3 | r5 >> 2) << 16) | ((g6 << 2 | g6 >> 4) << 8) | (b5 << 3 | b5 >> 2));
+      }
+    log("pushImage(%d,%d,%d,%d,%04x)", (int)x, (int)y, (int)w, (int)h, (unsigned)data[0]);
+  }
   void fillRect(int32_t x, int32_t y, int32_t w, int32_t h, uint32_t c) {
     for (int32_t yy = y; yy < y + h; yy++)
       for (int32_t xx = x; xx < x + w; xx++) set(xx, yy, c);
@@ -232,6 +241,23 @@ void test_all_primitives_forwarded_with_args(void) {
   TEST_ASSERT_TRUE(logged(gfxMain, "fillTriangle(1,1,6,1,3,5,222222)"));
 }
 
+void test_push_image_from_a_string(void) {
+  build();
+  // Two rows of two: red, green / blue, white, big-endian RGB565.
+  TEST_ASSERT_TRUE(sandbox->loadChunk(
+      "local g = lgfx.bind('main')\n"
+      "g:fillScreen(0x000000)\n"
+      "g:pushImage(3, 4, 2, 2, '\\248\\0\\7\\224\\0\\31\\255\\255')\n"
+      "ok = pcall(g.pushImage, g, 0, 0, 2, 2, 'short') and 1 or 0\n"));
+  TEST_ASSERT_TRUE(logged(gfxMain, "pushImage(3,4,2,2,f800)"));
+  TEST_ASSERT_EQUAL_UINT32(0xFF0000u, gfxMain->px[4][3]);
+  TEST_ASSERT_EQUAL_UINT32(0x00FF00u, gfxMain->px[4][4]);
+  TEST_ASSERT_EQUAL_UINT32(0x0000FFu, gfxMain->px[5][3]);
+  TEST_ASSERT_EQUAL_UINT32(0xFFFFFFu, gfxMain->px[5][4]);
+  TEST_ASSERT_EQUAL_UINT32(0x000000u, gfxMain->px[6][3]);
+  TEST_ASSERT_EQUAL_INT(0, sandbox->luaGlobalIntForTest("ok"));   // a short string raises
+}
+
 void test_text_calls_and_datum_constants(void) {
   build();
   TEST_ASSERT_TRUE(sandbox->loadChunk(
@@ -337,6 +363,7 @@ int main(int, char**) {
   RUN_TEST(test_bind_dimensions_pixels_and_flip);
   RUN_TEST(test_fillrect_pixels_inside_and_outside);
   RUN_TEST(test_all_primitives_forwarded_with_args);
+  RUN_TEST(test_push_image_from_a_string);
   RUN_TEST(test_text_calls_and_datum_constants);
   RUN_TEST(test_two_displays_bind_independently);
   RUN_TEST(test_bind_unknown_display_raises);
