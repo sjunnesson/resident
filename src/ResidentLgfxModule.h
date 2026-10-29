@@ -42,7 +42,9 @@
 // adapter, and direct-to-panel targets where drawing is already live).
 //
 // Deliberately small this pass: default font + setTextSize multiplier only,
-// no font selection, no images, no Lua-created sprites.
+// no font selection, no Lua-created sprites. One image call: pushImage, a
+// block of RGB565 pixels from a Lua string, for apps that keep their own
+// picture and send what changed in one call instead of a fillRect a run.
 #ifndef RESIDENT_LGFX_MODULE_H
 #define RESIDENT_LGFX_MODULE_H
 
@@ -89,6 +91,20 @@ public:
 
   virtual int32_t width() = 0;
   virtual int32_t height() = 0;
+
+  // A block of w x h pixels at x, y: RGB565, big-endian (high byte first),
+  // row by row. The default draws it a pixel at a time, so every target has
+  // it; a target over LovyanGFX hands it to pushImage.
+  virtual void pushImage(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t* rgb565be) {
+    for (int32_t r = 0; r < h; r++) {
+      for (int32_t c = 0; c < w; c++) {
+        const uint8_t* p = rgb565be + ((size_t)r * (size_t)w + (size_t)c) * 2;
+        uint16_t v = (uint16_t)((p[0] << 8) | p[1]);
+        uint32_t r5 = (v >> 11) & 0x1F, g6 = (v >> 5) & 0x3F, b5 = v & 0x1F;
+        drawPixel(x + c, y + r, ((r5 << 3 | r5 >> 2) << 16) | ((g6 << 2 | g6 >> 4) << 8) | (b5 << 3 | b5 >> 2));
+      }
+    }
+  }
 
   // R19 machinery hooks. Defaults keep pre-R19 targets (their own presenter,
   // or direct-to-panel) working unchanged.
@@ -160,6 +176,22 @@ public:
 
   int32_t width() override { return _gfx->width(); }
   int32_t height() override { return _gfx->height(); }
+
+  // LovyanGFX's pushImage(x, y, w, h, const uint16_t*) reads native-endian
+  // RGB565; the Lua string is big-endian, so rows go through a small buffer,
+  // as many whole rows at a time as fit.
+  void pushImage(int32_t x, int32_t y, int32_t w, int32_t h, const uint8_t* be) override {
+    static constexpr int32_t N = 1024;
+    static uint16_t buf[N];
+    if (w > N) { LgfxTarget::pushImage(x, y, w, h, be); return; }
+    const int32_t rowsPer = N / w;
+    for (int32_t r0 = 0; r0 < h; r0 += rowsPer) {
+      const int32_t rows = (h - r0 < rowsPer) ? h - r0 : rowsPer;
+      const uint8_t* p = be + (size_t)r0 * (size_t)w * 2;
+      for (int32_t i = 0; i < rows * w; i++) buf[i] = (uint16_t)((p[2 * i] << 8) | p[2 * i + 1]);
+      _gfx->pushImage(x, y + r0, w, rows, buf);
+    }
+  }
 
   void flip() override { if (_present) _present(); }
 
@@ -304,6 +336,7 @@ public:
       {"setCursor", l_setCursor},
       {"print", l_print},
       {"drawString", l_drawString},
+      {"pushImage", l_pushImage},
       {"width", l_width},
       {"height", l_height},
       {"flip", l_flip},
@@ -412,6 +445,19 @@ private:
   static int l_print(lua_State* L) { tgt(L)->print(luaL_checkstring(L, 2)); return 0; }
   static int l_drawString(lua_State* L) {
     tgt(L)->drawString(luaL_checkstring(L, 2), geti(L, 3), geti(L, 4)); return 0;
+  }
+  // g:pushImage(x, y, w, h, data): data is exactly w * h * 2 bytes, RGB565
+  // big-endian, row by row.
+  static int l_pushImage(lua_State* L) {
+    int32_t x = geti(L, 2), y = geti(L, 3), w = geti(L, 4), h = geti(L, 5);
+    size_t len = 0;
+    const char* data = luaL_checklstring(L, 6, &len);
+    if (w <= 0 || h <= 0) return 0;
+    if (w > 4096 || h > 4096 || len != (size_t)w * (size_t)h * 2) {
+      return luaL_argerror(L, 6, "expected w * h * 2 bytes of RGB565, big-endian");
+    }
+    tgt(L)->pushImage(x, y, w, h, (const uint8_t*)data);
+    return 0;
   }
   static int l_width(lua_State* L) { lua_pushinteger(L, tgt(L)->width()); return 1; }
   static int l_height(lua_State* L) { lua_pushinteger(L, tgt(L)->height()); return 1; }
