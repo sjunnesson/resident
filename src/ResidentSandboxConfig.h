@@ -109,6 +109,14 @@ struct SandboxConfig {
   // the default.
   uint16_t tickIntervalMs = 100;
 
+  // A board that knows a better moment to tick than "tickIntervalMs have
+  // passed": one whose panel is scanned at a fixed rate ticks as a scan
+  // starts, every so many scans, so each frame an app draws stays on the
+  // glass as long as the one before. Asked on every loop pass while an app
+  // runs, with the ms since the last tick (what on_tick will get as dt_ms);
+  // true ticks now. Unset, the interval decides. Overlays keep the interval.
+  bool (*tickDue)(unsigned long elapsedMs) = nullptr;
+
   // Sandbox hardening (0.8): by default the app environment does NOT get
   // os / io / package / require / load / dofile / loadstring / loadfile /
   // debug, or string.dump. Set true to open the full standard library

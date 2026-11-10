@@ -2581,7 +2581,7 @@ void Sandbox::loop() {
 
   unsigned long now = millis();
   unsigned long elapsed = now - _lastTickTime;
-  if (elapsed >= tickInterval()) {
+  if (_config.tickDue ? _config.tickDue(elapsed) : elapsed >= tickInterval()) {
 #if RESIDENT_TICK_DIAGS
     uint32_t diagT0 = micros();
 #endif
