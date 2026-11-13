@@ -306,6 +306,58 @@ void test_clip_rect_limits_what_is_drawn(void) {
   TEST_ASSERT_EQUAL_UINT32(0xFFFFFFu, gfxMain->px[5][0]);   // cleared: drawn anywhere
 }
 
+// A 6 x 6 picture, each quarter a colour (red, green above; blue, white below), as a string and as
+// rows; its ring from 1 to 2 pixels out on (8, 8), unturned, a quarter turn on, and through a palette.
+void test_push_disc_turns_a_picture(void) {
+  build();
+  TEST_ASSERT_TRUE(sandbox->loadChunk(
+      "g = lgfx.bind('main')\n"
+      "g:fillScreen(0)\n"
+      "local R, G, B, W = '\\248\\0', '\\7\\224', '\\0\\31', '\\255\\255'\n"
+      "local top, bottom = R:rep(3) .. G:rep(3), B:rep(3) .. W:rep(3)\n"
+      "rows = { top, top, top, bottom, bottom, bottom }\n"
+      "g:pushDisc(8, 8, 1, 2, 6, 6, table.concat(rows), 0)\n"));
+  TEST_ASSERT_EQUAL_UINT32(0x000000u, gfxMain->px[8][8]);    // the hole
+  TEST_ASSERT_EQUAL_UINT32(0xFF0000u, gfxMain->px[7][7]);    // up and left: red
+  TEST_ASSERT_EQUAL_UINT32(0x00FF00u, gfxMain->px[7][9]);
+  TEST_ASSERT_EQUAL_UINT32(0x0000FFu, gfxMain->px[9][7]);
+  TEST_ASSERT_EQUAL_UINT32(0xFFFFFFu, gfxMain->px[9][9]);
+  TEST_ASSERT_EQUAL_UINT32(0x00FF00u, gfxMain->px[6][8]);    // straight up, 2 out: the picture's column 3
+  TEST_ASSERT_EQUAL_UINT32(0x000000u, gfxMain->px[6][6]);    // past the ring
+  TEST_ASSERT_EQUAL_UINT32(0x000000u, gfxMain->px[8][11]);
+  // A quarter turn clockwise, from rows: what was up and left is now up and right.
+  TEST_ASSERT_TRUE(sandbox->loadChunk("g:fillScreen(0) g:pushDisc(8, 8, 1, 2, 6, 6, rows, 90)\n"));
+  TEST_ASSERT_EQUAL_UINT32(0xFF0000u, gfxMain->px[7][9]);
+  TEST_ASSERT_EQUAL_UINT32(0x00FF00u, gfxMain->px[9][9]);
+  TEST_ASSERT_EQUAL_UINT32(0xFFFFFFu, gfxMain->px[9][7]);
+  TEST_ASSERT_EQUAL_UINT32(0x0000FFu, gfxMain->px[7][7]);
+  // Twice the size through a palette; an index past its end is black; the clip holds.
+  TEST_ASSERT_TRUE(sandbox->loadChunk(
+      "local a, b = '\\0\\0\\0\\1\\1\\1', '\\1\\1\\1\\2\\2\\2'\n"
+      "g:fillScreen(0x123456) g:setClipRect(0, 0, 16, 9)\n"
+      "g:pushDisc(8, 8, 0, 4, 6, 6, { a, a, a, b, b, b }, 0, 2, '\\248\\0\\7\\224')\n"
+      "g:clearClipRect()\n"));
+  TEST_ASSERT_EQUAL_UINT32(0xFF0000u, gfxMain->px[6][6]);
+  TEST_ASSERT_EQUAL_UINT32(0x00FF00u, gfxMain->px[6][10]);
+  TEST_ASSERT_EQUAL_UINT32(0x00FF00u, gfxMain->px[8][5]);
+  TEST_ASSERT_EQUAL_UINT32(0x000000u, gfxMain->px[8][11]);   // index 2: past the palette
+  TEST_ASSERT_EQUAL_UINT32(0x123456u, gfxMain->px[9][8]);    // clipped
+  TEST_ASSERT_EQUAL_UINT32(0x123456u, gfxMain->px[3][3]);    // past the ring
+  // What it refuses: a ring past the picture, a short row, a short string, a picture too large.
+  TEST_ASSERT_TRUE(sandbox->loadChunk(
+      "far = pcall(g.pushDisc, g, 8, 8, 0, 3, 6, 6, rows, 0) and 1 or 0\n"
+      "fits = pcall(g.pushDisc, g, 8, 8, 0, 3, 6, 6, rows, 0, 2) and 1 or 0\n"
+      "rows[4] = 'short'\n"
+      "short = pcall(g.pushDisc, g, 8, 8, 0, 1, 6, 6, rows, 0) and 1 or 0\n"
+      "str = pcall(g.pushDisc, g, 8, 8, 0, 1, 6, 6, 'abc', 0) and 1 or 0\n"
+      "big = pcall(g.pushDisc, g, 8, 8, 0, 1, 600, 1, 'abc', 0) and 1 or 0\n"));
+  TEST_ASSERT_EQUAL_INT(0, sandbox->luaGlobalIntForTest("far"));
+  TEST_ASSERT_EQUAL_INT(1, sandbox->luaGlobalIntForTest("fits"));
+  TEST_ASSERT_EQUAL_INT(0, sandbox->luaGlobalIntForTest("short"));
+  TEST_ASSERT_EQUAL_INT(0, sandbox->luaGlobalIntForTest("str"));
+  TEST_ASSERT_EQUAL_INT(0, sandbox->luaGlobalIntForTest("big"));
+}
+
 // A target with only the base class's pushImage, pushIndexed and clip: they clip themselves.
 struct PlainTarget : Resident::LgfxLovyanTarget<FakeGfx> {
   using Resident::LgfxLovyanTarget<FakeGfx>::LgfxLovyanTarget;
@@ -459,6 +511,7 @@ int main(int, char**) {
   RUN_TEST(test_all_primitives_forwarded_with_args);
   RUN_TEST(test_push_image_from_a_string);
   RUN_TEST(test_push_image_through_a_palette);
+  RUN_TEST(test_push_disc_turns_a_picture);
   RUN_TEST(test_clip_rect_limits_what_is_drawn);
   RUN_TEST(test_the_base_target_clips_its_own_blocks);
   RUN_TEST(test_app_reset_clears_the_clip);
