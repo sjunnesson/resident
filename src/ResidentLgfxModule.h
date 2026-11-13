@@ -47,11 +47,13 @@
 // picture and send what changed in one call instead of a fillRect a run; or,
 // with a palette, a block of palette indices with one of them transparent, so
 // an app can lay sprites over a backdrop, clipped to a rectangle
-// (setClipRect), and leave every pixel's work to C.
+// (setClipRect), and leave every pixel's work to C. And pushDisc: a round
+// piece of a picture, turned and scaled, for a thing that spins.
 #ifndef RESIDENT_LGFX_MODULE_H
 #define RESIDENT_LGFX_MODULE_H
 
 #include <Arduino.h>
+#include <cmath>
 #include <cstring>
 #include <functional>
 #include "ResidentExtension.h"
@@ -121,6 +123,35 @@ public:
       for (int32_t c = c0; c < c1; c++) {
         int32_t i = row[c];
         if (i != transparent && i < ncolors) drawPixel(x + c, y + r, rgb888(palette + i * 2));
+      }
+    }
+  }
+
+  // A round piece of a picture, turned about its middle, which lands on
+  // (cx, cy): every pixel from r0 to r1 pixels out is drawn (dx*dx + dy*dy
+  // from r0*r0 to r1*r1), the nearest of the picture's. rows: the picture's h
+  // rows of w pixels, each a byte that indexes palette (ncolors colours,
+  // RGB565 big-endian; an index past its end is black), or with no palette
+  // two bytes of RGB565 big-endian. c16 and s16 are the turn's cosine and
+  // sine over the zoom, times 65536: the pixel (cx + dx, cy + dy) shows the
+  // picture's ((w << 15) + dx * c16 + dy * s16) >> 16 across and
+  // ((h << 15) - dx * s16 + dy * c16) >> 16 down, which the caller has made
+  // sure is inside it. The default draws a pixel at a time; a target with a
+  // frame buffer should write it straight in, a run of each row at a time.
+  virtual void pushDisc(int32_t cx, int32_t cy, int32_t r0, int32_t r1, const uint8_t* const* rows,
+                        int32_t w, int32_t h, const uint8_t* palette, int32_t ncolors,
+                        int32_t c16, int32_t s16) {
+    for (int32_t dy = -r1; dy <= r1; dy++) {
+      if (_clipped && (cy + dy < _clipY0 || cy + dy >= _clipY1)) continue;
+      for (int32_t dx = -r1; dx <= r1; dx++) {
+        int32_t d2 = dx * dx + dy * dy;
+        if (d2 < r0 * r0 || d2 > r1 * r1) continue;
+        if (_clipped && (cx + dx < _clipX0 || cx + dx >= _clipX1)) continue;
+        int32_t u = ((w << 15) + dx * c16 + dy * s16) >> 16, v = ((h << 15) - dx * s16 + dy * c16) >> 16;
+        uint32_t c = 0;
+        if (!palette) c = rgb888(rows[v] + u * 2);
+        else if (rows[v][u] < ncolors) c = rgb888(palette + rows[v][u] * 2);
+        drawPixel(cx + dx, cy + dy, c);
       }
     }
   }
@@ -422,6 +453,7 @@ public:
       {"print", l_print},
       {"drawString", l_drawString},
       {"pushImage", l_pushImage},
+      {"pushDisc", l_pushDisc},
       {"setClipRect", l_setClipRect},
       {"clearClipRect", l_clearClipRect},
       {"width", l_width},
@@ -562,6 +594,51 @@ private:
     }
     tgt(L)->pushIndexed(x, y, w, h, (const uint8_t*)data, (const uint8_t*)palette,
                         (int32_t)(plen / 2), transparent);
+    return 0;
+  }
+  // g:pushDisc(cx, cy, r0, r1, w, h, data, angle[, zoom[, palette]]): the
+  // ring from r0 to r1 pixels out of a picture turned angle degrees clockwise
+  // about its middle and drawn zoom times its size (1 if left out), the middle
+  // on (cx, cy). data is the picture, w x h pixels (1 to 512 each way) of
+  // RGB565 big-endian, or with a palette (as pushImage's) a byte a pixel: one
+  // string, row by row, or a table of h strings, a row each, so that an app
+  // can make or receive a large picture in pieces. The ring has to stay
+  // inside the picture however it's turned.
+  static int l_pushDisc(lua_State* L) {
+    static constexpr int32_t MOST = 512;
+    static const uint8_t* rows[MOST];
+    int32_t cx = geti(L, 2), cy = geti(L, 3), r0 = geti(L, 4), r1 = geti(L, 5), w = geti(L, 6), h = geti(L, 7);
+    double angle = (double)luaL_checknumber(L, 9), zoom = (double)luaL_optnumber(L, 10, 1.0);
+    size_t plen = 0;
+    const char* palette = lua_isnoneornil(L, 11) ? nullptr : luaL_checklstring(L, 11, &plen);
+    if (palette && (plen == 0 || plen > 512 || plen % 2 != 0)) {
+      return luaL_argerror(L, 11, "expected 1 to 256 colours of RGB565, big-endian");
+    }
+    if (w < 1 || h < 1 || w > MOST || h > MOST) return luaL_argerror(L, 6, "expected a picture of 1 to 512 pixels each way");
+    if (!(zoom >= 1.0 / 16 && zoom <= 16)) return luaL_argerror(L, 10, "expected a zoom from 1/16 to 16");
+    const size_t row = (size_t)w * (palette ? 1 : 2);
+    if (lua_type(L, 8) == LUA_TTABLE) {
+      for (int32_t i = 0; i < h; i++) {
+        size_t len = 0;
+        const char* s = lua_rawgeti(L, 8, i + 1) == LUA_TSTRING ? lua_tolstring(L, -1, &len) : nullptr;
+        lua_pop(L, 1);   // the table still holds it
+        if (!s || len != row) return luaL_argerror(L, 8, "expected h rows, each a string of w pixels");
+        rows[i] = (const uint8_t*)s;
+      }
+    } else {
+      size_t len = 0;
+      const char* data = luaL_checklstring(L, 8, &len);
+      if (len != row * (size_t)h) return luaL_argerror(L, 8, "expected w * h pixels");
+      for (int32_t i = 0; i < h; i++) rows[i] = (const uint8_t*)data + row * (size_t)i;
+    }
+    if (r1 < 0 || r0 > r1) return 0;
+    if (r0 < 0) r0 = 0;
+    const double turn = angle * 3.14159265358979323846 / 180.0;
+    const int32_t c16 = (int32_t)lround(cos(turn) * 65536.0 / zoom), s16 = (int32_t)lround(sin(turn) * 65536.0 / zoom);
+    // The farthest the ring reaches from the picture's middle, in 65536ths of its pixels.
+    const double reach = ceil(r1 * sqrt((double)c16 * c16 + (double)s16 * s16));
+    if (reach >= (w < h ? w : h) * 32768.0) return luaL_argerror(L, 5, "the ring reaches past the picture");
+    tgt(L)->pushDisc(cx, cy, r0, r1, rows, w, h, (const uint8_t*)palette, (int32_t)(plen / 2), c16, s16);
     return 0;
   }
   static int l_setClipRect(lua_State* L) {
